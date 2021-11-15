@@ -137,7 +137,7 @@ dBH_mvgauss_qc_optimal <- function(zvals,
 
         ## RBH function with alpha = alpha0
         res_alpha0 <- compute_knots_mvgauss(
-            zstat = ztat,
+            zstat = zstat,
             zminus = zminus,
             cor = cor,
             alpha = alpha0,
