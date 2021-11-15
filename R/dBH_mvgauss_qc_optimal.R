@@ -3,6 +3,8 @@ dBH_mvgauss_qc_optimal <- function(zvals,
                            Sigmafun = NULL,
                            side = c("one", "two"),
                            MC = NULL,
+                           lambdaEstType = NULL,
+                           pi0Est = NULL,
                            groups = NULL,
                            alpha = 0.05, gamma = NULL,
                            is_safe = FALSE,
@@ -20,7 +22,8 @@ dBH_mvgauss_qc_optimal <- function(zvals,
     pvals[which(pvals >= kappa)] = Inf
 
     init_weights <- adaptive_optimal.weights(groups = groups, 
-                    zvals = zvals, alpha = alpha0, side = side)
+                    zvals = zvals, alpha = alpha0, side = side, 
+                    type = lambdaEstType, pi0Est = pi0Est)
     init_qvals <- qvals_BH_reshape(pvals/init_weights, avals)
     init_acclist <- which(init_qvals >= qcap * alpha | pvals >= kappa)
     if (length(init_acclist) > 0){
@@ -58,7 +61,8 @@ dBH_mvgauss_qc_optimal <- function(zvals,
         mcz <- rnorm(MC)
         w <- sapply(mcz, function(z){
           adaptive_optimal.weights(groups = c(group, groupminus), 
-                                   zvals = c(z, s + cor * z), alpha = alpha0, side = side)
+                                   zvals = c(z, s + cor * z), alpha = alpha0, side = side,
+                                   type = lambdaEstType, pi0Est = pi0Est)
         })
 
         weights <- rowMeans(w)
