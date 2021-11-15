@@ -4,8 +4,10 @@ dBH_mvgauss_qc_optimal <- function(zvals,
                                    side = c("one", "two"),
                                    MC = NULL,
                                    groups = NULL,
-                                   lfdrinv_type = "max",
-                                   alpha = 0.05, gamma = NULL,
+                                   lfdrinv_type = "lin_exp",
+                                   alpha = 0.05, 
+                                   gamma = NULL,
+                                   pi0Est = pi0Est, 
                                    is_safe = FALSE,
                                    avals = NULL, 
                                    avals_type = c("BH", "geom", "bonf", "manual"),
@@ -25,7 +27,8 @@ dBH_mvgauss_qc_optimal <- function(zvals,
         zvals = zvals, 
         alpha = alpha, 
         side = side,
-        type = lfdrinv_type)
+        type = lfdrinv_type,
+        pi0Est = pi0Est)
     init_qvals <- qvals_BH_reshape(pvals/init_weights, avals)
     init_acclist <- which(init_qvals >= qcap * alpha | pvals >= kappa)
     if (length(init_acclist) > 0){
@@ -66,7 +69,8 @@ dBH_mvgauss_qc_optimal <- function(zvals,
                                      zvals = c(z, s + cor * z), 
                                      alpha = alpha, 
                                      side = side,
-                                     type = lfdrinv_type)
+                                     type = lfdrinv_type,
+                                     pi0Est = pi0Est)
         })
         
         weights <- rowMeans(w)
