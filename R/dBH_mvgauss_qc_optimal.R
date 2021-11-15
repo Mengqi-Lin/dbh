@@ -1,35 +1,37 @@
 dBH_mvgauss_qc_optimal <- function(zvals,
-                           Sigma = NULL,
-                           Sigmafun = NULL,
-                           side = c("one", "two"),
-                           MC = NULL,
-                           lambdaEstType = NULL,
-                           pi0Est = NULL,
-                           groups = NULL,
-                           alpha = 0.05, gamma = NULL,
-                           is_safe = FALSE,
-                           avals = NULL, 
-                           avals_type = c("BH", "geom", "bonf", "manual"),
-                           geom_fac = 2,
-                           eps = 0.05,
-                           qcap = 2,
-                           kappa = 0.5,
-                           verbose = FALSE) {
+                                   Sigma = NULL,
+                                   Sigmafun = NULL,
+                                   side = c("one", "two"),
+                                   MC = NULL,
+                                   groups = NULL,
+                                   lfdrinv_type = "max",
+                                   alpha = 0.05, gamma = NULL,
+                                   is_safe = FALSE,
+                                   avals = NULL, 
+                                   avals_type = c("BH", "geom", "bonf", "manual"),
+                                   geom_fac = 2,
+                                   eps = 0.05,
+                                   qcap = 2,
+                                   kappa = 0.5,
+                                   verbose = FALSE) {
     n <- length(zvals)
     alpha0 <- gamma * alpha
     ntails <- ifelse(side == "two", 2, 1)    
     pvals <- zvals_pvals(zvals, side)
     pvals[which(pvals >= kappa)] = Inf
-
-    init_weights <- adaptive_optimal.weights(groups = groups, 
-                    zvals = zvals, alpha = alpha0, side = side, 
-                    type = lambdaEstType, pi0Est = pi0Est)
+    
+    init_weights <- adaptive_optimal.weights(
+        groups = groups, 
+        zvals = zvals, 
+        alpha = alpha, 
+        side = side,
+        type = lfdrinv_type)
     init_qvals <- qvals_BH_reshape(pvals/init_weights, avals)
     init_acclist <- which(init_qvals >= qcap * alpha | pvals >= kappa)
     if (length(init_acclist) > 0){
         cand <- (1:n)[-init_acclist]
     }
-
+    
     if (length(cand) == 0){
         return(list(rejs = numeric(0),
                     initrejs = numeric(0),
@@ -38,11 +40,11 @@ dBH_mvgauss_qc_optimal <- function(zvals,
                     safe = is_safe,
                     secBH = FALSE))
     }
-
+    
     if (verbose){
         pb <- txtProgressBar(style=3)
     }
-
+    
     ncands <- length(cand)
     
     cand_info <- sapply(1:ncands, function(id){
@@ -57,14 +59,16 @@ dBH_mvgauss_qc_optimal <- function(zvals,
         s <- zminus - cor * zstat
         group <- groups[i]
         groupminus <- groups[-i]
-
+        
         mcz <- rnorm(MC)
         w <- sapply(mcz, function(z){
-          adaptive_optimal.weights(groups = c(group, groupminus), 
-                                   zvals = c(z, s + cor * z), alpha = alpha0, side = side,
-                                   type = lambdaEstType, pi0Est = pi0Est)
+            adaptive_optimal.weights(groups = c(group, groupminus), 
+                                     zvals = c(z, s + cor * z), 
+                                     alpha = alpha, 
+                                     side = side,
+                                     type = lfdrinv_type)
         })
-
+        
         weights <- rowMeans(w)
         weight <- weights[1]
         reconsp <- c(pvals[i], pvals[-i])
@@ -72,18 +76,27 @@ dBH_mvgauss_qc_optimal <- function(zvals,
         qval <- qvals[1]
         dBH_rej0 <- which(qvals <= alpha0)
         Rinit <- ifelse(qval <= alpha0, length(dBH_rej0), length(dBH_rej0)+1)
-
+        
         if ((qval <= alpha0 & is_safe) | qval <= alpha / max(avals)) {
             initrej = T
             ifrej = T
             expt = NA
-            return(c(ifrej, initrej, expt, Rinit))
+            weight = weight 
+            return(c(ifrej, initrej, expt, Rinit, weight))
         }
-
+        
+        if (qval > qcap * alpha) {
+            initrej = F
+            ifrej = F
+            expt = NA
+            weight = weight
+            return(c(ifrej, initrej, expt, Rinit, weight))
+        }
+        
         initrej = F
         low <- qnorm(min(qval * weight * max(avals) / n / ntails, kappa), lower.tail = FALSE)
         high <- qnorm(weight * alpha * eps / n / ntails, lower.tail = FALSE)
-
+        
         
         ## RBH function with alpha = qi
         res_q <- compute_knots_mvgauss(
@@ -131,10 +144,10 @@ dBH_mvgauss_qc_optimal <- function(zvals,
             } else if (avals_type == "bonf"){
                 thra <- rep(1, length(nrejs))
             }
-            thr <- qnorm(thra * qvals[i] * weights[i] / n / ntails, lower.tail = FALSE)
+            thr <- qnorm(thra * qval * weight / n / ntails, lower.tail = FALSE)
             list(knots = knots, thr = thr)
         })
-
+        
         ## RBH function with alpha = alpha0
         res_alpha0 <- compute_knots_mvgauss(
             zstat = zstat,
@@ -181,63 +194,71 @@ dBH_mvgauss_qc_optimal <- function(zvals,
             } else if (avals_type == "bonf"){
                 thra <- rep(1, length(nrejs))
             }
-            thr <- qnorm(thra * alpha0 * weights[i] / n / ntails, lower.tail = FALSE)
+            thr <- qnorm(thra * alpha0 * weight / n / ntails, lower.tail = FALSE)
             knots_lo <- head(knots, -1)
             knots_hi <- tail(knots, -1)
             nrejs <- nrejs + ((knots_lo + knots_hi) / 2 < thr)
             list(knots = knots, nrejs = nrejs)
         })
-
+        
         ## Combine two RBH functions
         res <- RBHfun_combine(res_q, res_alpha0)
-
+        
         ## Compute conditional expectation
         expt <- sapply(res, function(re){
             compute_cond_exp(abs(zstat), re$knots, re$nrejs, re$thr, dist = pnorm)
         })
-
+        
         expt <- sum(expt)
         ifrej <- (expt <= alpha * weight / n)
-
+        
         if (verbose){
             setTxtProgressBar(pb, id / ncands)
         }
         
         #return(c(ifrej, expt))
-        return(c(ifrej, initrej, expt, Rinit))
+        return(c(ifrej, initrej, expt, Rinit, weight))
     })
-
+    rownames(cand_info) <- c("ifrej", "ifrej_init", "exp", "Rinit", "weight")
+    
     if (verbose){
         cat("\n")
     }
     
     ifrej <- as.logical(cand_info[1, ])
-    rejlist <- cand[which(ifrej)]
+    rejindex <- which(ifrej)
+    rejlist <- cand[rejindex]
+    rejthoCal <- cand_info[2, ]
     expt <- cand_info[3, ]
     Rinit <- cand_info[4, ]
-
+    weights <- cand_info[5, ]
+    
     if (length(rejlist) == 0){
         return(list(rejs = numeric(0),
                     initrejs = numeric(0),
+                    rejthoCal = numeric(0),
                     cand = cand,
                     expt = expt,
+                    weights = weights,
                     safe = is_safe,
                     secBH = FALSE))
     }
-
+    
     rejlist <- sort(rejlist)
     Rplus <- length(rejlist)
-    if (Rplus >= max(Rinit[which(ifrej)])){
+    if (Rplus >= max(Rinit[rejindex])){
         return(list(rejs = rejlist,
                     initrejs = rejlist,
+                    rejthoCal = rejthoCal,
                     cand = cand,
                     expt = expt,
+                    weights = weights,
                     safe = is_safe,
                     secBH = FALSE))
     }
-
+    
     uvec <- runif(Rplus)
-    secBH_fac <- Rinit[which(ifrej)] / Rplus
+    secBH_fac <- Rinit[rejindex] / Rplus
     tdp <- uvec * secBH_fac
     nrejs <- nrejs_BH(tdp, 1)
     thr <- max(nrejs, 1) / Rplus
@@ -245,13 +266,14 @@ dBH_mvgauss_qc_optimal <- function(zvals,
     rejs <- rejlist[secrejs]
     return(list(rejs = rejs,
                 initrejs = rejlist,
+                rejthoCal = rejthoCal,
                 cand = cand,
                 expt = expt,
+                weights = weights,
                 safe = FALSE,
                 secBH = TRUE,
                 secBH_fac = secBH_fac))
 }
-
 
 
 
