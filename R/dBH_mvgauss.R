@@ -177,6 +177,8 @@ dBH_mvgauss <- function(zvals,
 
     if (weight_type == "trivial") {
         weights <- rep(1, n)
+        covariates <- NULL
+        groups <- NULL
     } else if (is.null(covariates)) {
         if (length(weights) != n){
             stop("\'weights\' must be a vector of length n")

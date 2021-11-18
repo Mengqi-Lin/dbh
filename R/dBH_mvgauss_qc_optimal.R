@@ -76,6 +76,7 @@ dBH_mvgauss_qc_optimal <- function(zvals,
         weights <- rowMeans(w)
         weight <- weights[1]
         reconsp <- c(pvals[i], pvals[-i])
+        reconsp[which(reconsp > kappa)] = Inf
         qvals <- qvals_BH_reshape(reconsp/weights, avals)
         qval <- qvals[1]
         dBH_rej0 <- which(qvals <= alpha0)
